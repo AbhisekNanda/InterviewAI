@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Session</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #111827; color: #E5E7EB; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .container { background-color: #1F2937; padding: 2rem; border-radius: 1rem; width: 100%; max-width: 42rem; border: 1px solid #374151; text-align: center; }
+        #status { font-size: 1.125rem; color: #FBBF24; margin-bottom: 2rem; height: 1.5rem; }
+        #transcript { font-style: italic; color: #D1D5DB; margin-bottom: 1rem; height: 3rem; }
+        #recordBtn { width: 6rem; height: 6rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center; margin: 0 auto; background-color: #4B5563; border: none; cursor: pointer; }
+        #recordBtn.recording { background-color: #EF4444; }
+        button:disabled { background-color: #374151; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="interview-title" style="font-size: 1.875rem; font-weight: 700; margin-bottom: 1rem;">Interview Session</h1>
+        <p id="transcript">...</p>
+        <p id="status">Connecting...</p>
+        <button id="recordBtn" onclick="toggleRecording()" disabled>
+            <svg style="width: 2rem; height: 2rem; color: white;" fill="currentColor" viewBox="0 0 20 20"><path d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 017 8a1 1 0 10-2 0 7.001 7.001 0 006 6.93V17H9a1 1 0 100 2h6a1 1 0 100-2h-2v-2.07z"></path></svg>
+        </button>
+    </div>
+    <script>
+        const statusEl = document.getElementById('status');
+        const recordBtn = document.getElementById('recordBtn');
+        const transcriptEl = document.getElementById('transcript');
+        const titleEl = document.getElementById('interview-title');
+        
+        const pathParts = window.location.pathname.split('/');
+        const interviewId = pathParts[pathParts.length - 1];
+        titleEl.textContent = `Interview Session #${interviewId}`;
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const synth = window.speechSynthesis;
+        let recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        
+        let websocket = null;
+        let isRecording = false;
+
+        function speak(text) {
+            if (synth.speaking) synth.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.onstart = () => { statusEl.textContent = "Interviewer is speaking..."; recordBtn.disabled = true; };
+            utterance.onend = () => { statusEl.textContent = "Your turn to speak."; recordBtn.disabled = false; };
+            synth.speak(utterance);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!interviewId || isNaN(interviewId)) {
+                statusEl.textContent = "Error: Invalid Interview ID.";
+                return;
+            }
+            speak(""); // Unlock audio context
+            const wsUrl = `ws://${window.location.host}/ws/interview/${interviewId}`;
+            websocket = new WebSocket(wsUrl);
+            websocket.onopen = () => statusEl.textContent = "Connected. Waiting for interviewer...";
+            websocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'ai_response') speak(data.text);
+            };
+        });
+
+        recognition.onresult = (event) => {
+            let finalTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
+            }
+            if (finalTranscript) {
+                transcriptEl.textContent = `You said: "${finalTranscript}"`;
+                if (websocket) websocket.send(finalTranscript.trim());
+                if(isRecording) toggleRecording();
+            }
+        };
+
+        recognition.onstart = () => { isRecording = true; recordBtn.classList.add('recording'); statusEl.textContent = 'Listening...'; };
+        recognition.onend = () => { if (isRecording) toggleRecording(); };
+
+        function toggleRecording() {
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+            isRecording = !isRecording;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text-to-Speech with Voice Options</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the Inter font and overall aesthetics */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light gray background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; /* Full viewport height */
+            margin: 0;
+            padding: 20px; /* Add some padding for smaller screens */
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff; /* White background for the card */
+            border-radius: 1.5rem; /* More rounded corners */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); /* Soft shadow */
+            padding: 2.5rem; /* Increased padding */
+            max-width: 700px; /* Wider for new controls */
+            width: 100%; /* Fluid width */
+            text-align: center;
+        }
+        textarea {
+            resize: vertical; /* Allow vertical resizing */
+            min-height: 120px; /* Minimum height for textarea */
+        }
+        button {
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+        }
+        button:hover {
+            transform: translateY(-2px); /* Slight lift on hover */
+        }
+        button:active {
+            transform: translateY(0); /* Press effect */
+        }
+        .range-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+        .range-container label {
+            min-width: 60px; /* Ensure label doesn't wrap too much */
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-4xl font-extrabold text-gray-800 mb-6">Text-to-Speech with Voice Options</h1>
+        <p class="text-gray-600 mb-8">
+            Type some text, select a voice, and adjust pitch/rate to make it sound more human.
+        </p>
+
+        <textarea
+            id="textToSpeak"
+            class="w-full p-4 mb-6 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"
+            placeholder="Enter text here..."
+        >Hello, this is a demonstration of text-to-speech with various voice options. Try changing the voice, pitch, and rate!</textarea>
+
+        <div class="mb-6">
+            <label for="voiceSelect" class="block text-gray-700 text-sm font-bold mb-2 text-left">Select Voice:</label>
+            <select
+                id="voiceSelect"
+                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"
+            >
+                <!-- Voices will be populated here by JavaScript -->
+            </select>
+        </div>
+
+        <div class="range-container">
+            <label for="rate" class="text-gray-700 text-sm font-bold">Rate:</label>
+            <input
+                type="range"
+                id="rate"
+                min="0.1"
+                max="10"
+                value="1"
+                step="0.1"
+                class="w-3/4 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg accent-blue-500"
+            >
+            <span id="rateValue" class="text-gray-700 text-sm font-bold ml-4 w-10 text-right">1.0</span>
+        </div>
+
+        <div class="range-container mb-6">
+            <label for="pitch" class="text-gray-700 text-sm font-bold">Pitch:</label>
+            <input
+                type="range"
+                id="pitch"
+                min="0"
+                max="2"
+                value="1"
+                step="0.1"
+                class="w-3/4 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer range-lg accent-blue-500"
+            >
+            <span id="pitchValue" class="text-gray-700 text-sm font-bold ml-4 w-10 text-right">1.0</span>
+        </div>
+
+        <div class="flex flex-wrap justify-center gap-4">
+            <button
+                id="speakButton"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-300"
+            >
+                Speak
+            </button>
+
+            <button
+                id="stopButton"
+                class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-full shadow-lg focus:outline-none focus:ring-4 focus:ring-red-300"
+            >
+                Stop
+            </button>
+        </div>
+
+        <div id="messageBox" class="mt-6 p-3 bg-yellow-100 text-yellow-800 rounded-lg hidden"></div>
+    </div>
+
+    <script>
+        // Get references to the DOM elements
+        const textToSpeakInput = document.getElementById('textToSpeak');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const rateInput = document.getElementById('rate');
+        const rateValueSpan = document.getElementById('rateValue');
+        const pitchInput = document.getElementById('pitch');
+        const pitchValueSpan = document.getElementById('pitchValue');
+        const speakButton = document.getElementById('speakButton');
+        const stopButton = document.getElementById('stopButton');
+        const messageBox = document.getElementById('messageBox');
+
+        // Initialize SpeechSynthesisUtterance object
+        let utterance = new SpeechSynthesisUtterance();
+        let voices = []; // Array to store available voices
+
+        /**
+         * Displays a message in the message box.
+         * @param {string} message - The message to display.
+         * @param {string} type - The type of message (success, info, warning, error).
+         */
+        function showMessage(message, type) {
+            messageBox.textContent = message;
+            messageBox.className = 'mt-6 p-3 rounded-lg'; // Reset classes
+            switch (type) {
+                case 'success':
+                    messageBox.classList.add('bg-green-100', 'text-green-800');
+                    break;
+                case 'info':
+                    messageBox.classList.add('bg-blue-100', 'text-blue-800');
+                    break;
+                case 'warning':
+                    messageBox.classList.add('bg-yellow-100', 'text-yellow-800');
+                    break;
+                case 'error':
+                    messageBox.classList.add('bg-red-100', 'text-red-800');
+                    break;
+                default:
+                    messageBox.classList.add('bg-gray-100', 'text-gray-800');
+            }
+            messageBox.classList.remove('hidden');
+        }
+
+        // Function to populate the voice dropdown
+        function populateVoiceList() {
+            voices = window.speechSynthesis.getVoices();
+            voiceSelect.innerHTML = ''; // Clear existing options
+
+            if (voices.length === 0) {
+                const option = document.createElement('option');
+                option.textContent = 'No voices available';
+                voiceSelect.appendChild(option);
+                voiceSelect.disabled = true;
+                showMessage('No Text-to-Speech voices found. This might be due to browser limitations or voices not yet loaded.', 'warning');
+                return;
+            }
+
+            // Sort voices by name for consistent display
+            voices.sort((a, b) => a.name.localeCompare(b.name)).forEach((voice, index) => {
+                const option = document.createElement('option');
+                option.textContent = `${voice.name} (${voice.lang})`;
+                option.setAttribute('data-name', voice.name); // Store voice name
+                option.setAttribute('data-lang', voice.lang); // Store voice language
+                option.value = index; // Use index as value to easily retrieve voice object
+                if (voice.default) {
+                    option.textContent += ' — DEFAULT';
+                }
+                voiceSelect.appendChild(option);
+            });
+
+            // Set the default voice if available
+            const defaultVoiceIndex = voices.findIndex(voice => voice.default);
+            if (defaultVoiceIndex !== -1) {
+                voiceSelect.value = defaultVoiceIndex;
+                utterance.voice = voices[defaultVoiceIndex];
+                utterance.lang = voices[defaultVoiceIndex].lang;
+            } else if (voices.length > 0) {
+                // If no default, select the first available voice
+                voiceSelect.value = 0;
+                utterance.voice = voices[0];
+                utterance.lang = voices[0].lang;
+            }
+        }
+
+        // Check if the Web Speech API is supported by the browser
+        if ('speechSynthesis' in window) {
+            // Populate voices when they change (important for Chrome and others)
+            window.speechSynthesis.onvoiceschanged = populateVoiceList;
+
+            // Call populateVoiceList immediately in case voices are already loaded
+            populateVoiceList();
+
+            // Event listener for voice selection change
+            voiceSelect.addEventListener('change', () => {
+                const selectedVoiceIndex = voiceSelect.value;
+                if (selectedVoiceIndex !== null && voices[selectedVoiceIndex]) {
+                    utterance.voice = voices[selectedVoiceIndex];
+                    utterance.lang = voices[selectedVoiceIndex].lang;
+                }
+            });
+
+            // Event listeners for rate and pitch changes
+            rateInput.addEventListener('input', () => {
+                utterance.rate = parseFloat(rateInput.value);
+                rateValueSpan.textContent = parseFloat(rateInput.value).toFixed(1);
+            });
+
+            pitchInput.addEventListener('input', () => {
+                utterance.pitch = parseFloat(pitchInput.value);
+                pitchValueSpan.textContent = parseFloat(pitchInput.value).toFixed(1);
+            });
+
+            // Event listener for the Speak button
+            speakButton.addEventListener('click', () => {
+                const text = textToSpeakInput.value.trim();
+
+                if (text === '') {
+                    showMessage('Please enter some text to speak.', 'warning');
+                    return;
+                }
+
+                // Stop any ongoing speech before starting a new one
+                window.speechSynthesis.cancel();
+
+                // Set the text to be spoken
+                utterance.text = text;
+
+                // Ensure voice, rate, and pitch are set before speaking
+                // These are already updated by input listeners, but good to ensure
+                if (!utterance.voice && voices.length > 0) {
+                    utterance.voice = voices[voiceSelect.value];
+                    utterance.lang = voices[voiceSelect.value].lang;
+                }
+                utterance.rate = parseFloat(rateInput.value);
+                utterance.pitch = parseFloat(pitchInput.value);
+
+                // Speak the utterance
+                window.speechSynthesis.speak(utterance);
+                showMessage('Speaking...', 'info');
+            });
+
+            // Event listener for the Stop button
+            stopButton.addEventListener('click', () => {
+                if (window.speechSynthesis.speaking) {
+                    window.speechSynthesis.cancel(); // Stop any ongoing speech
+                    showMessage('Speech stopped.', 'info');
+                } else {
+                    showMessage('No speech is currently active.', 'warning');
+                }
+            });
+
+            // Event listener for when speech ends
+            utterance.onend = () => {
+                showMessage('Speech finished.', 'success');
+            };
+
+            // Event listener for errors during speech
+            utterance.onerror = (event) => {
+                showMessage(`Speech error: ${event.error}`, 'error');
+                console.error('SpeechSynthesisUtterance.onerror', event);
+            };
+
+        } else {
+            // Display a message if Web Speech API is not supported
+            speakButton.disabled = true;
+            stopButton.disabled = true;
+            voiceSelect.disabled = true;
+            rateInput.disabled = true;
+            pitchInput.disabled = true;
+            showMessage('Web Speech API is not supported in this browser.', 'error');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js - Animated Human Model</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(to bottom, #6e8efb, #a777e3);
+        }
+        canvas {
+            display: block;
+        }
+        #controls-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        .anim-button {
+            padding: 10px 15px;
+            font-size: 16px;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .anim-button:hover {
+            background-color: #0056b3;
+        }
+        .anim-button.active {
+            background-color: #28a745;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Container for animation buttons -->
+    <div id="controls-container"></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- SCENE SETUP ---
+        let scene, camera, renderer, clock, mixer;
+        const actions = {};
+        let activeAction;
+
+        // --- INITIALIZE THE SCENE ---
+        function init() {
+            // Clock for animation timing
+            clock = new THREE.Clock();
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xeeeeee);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(1, 2, -3);
+            camera.lookAt(0, 1, 0);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true; // Enable shadows
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 3);
+            hemiLight.position.set(0, 20, 0);
+            scene.add(hemiLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 3);
+            dirLight.position.set(3, 10, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.top = 4;
+            dirLight.shadow.camera.bottom = -4;
+            dirLight.shadow.camera.left = -4;
+            dirLight.shadow.camera.right = 4;
+            dirLight.shadow.camera.near = 0.1;
+            dirLight.shadow.camera.far = 40;
+            scene.add(dirLight);
+
+            // Ground plane
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(100, 100),
+                new THREE.MeshPhongMaterial({ color: 0xbbbbbb, depthWrite: false })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Load the 3D Model
+            loadModel();
+
+            // Controls to orbit the camera
+            const controls = new OrbitControls(camera, renderer.domElement);
+            controls.enablePan = false;
+            controls.enableZoom = true;
+            controls.target.set(0, 1, 0);
+            controls.update();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        // --- LOAD THE GLTF MODEL AND ANIMATIONS ---
+        function loadModel() {
+            const loader = new GLTFLoader();
+            // Using a free animated model from the Three.js repository via a reliable CDN
+            const modelURL = 'https://cdn.jsdelivr.net/npm/three@0.165.0/examples/models/gltf/RobotExpressive/RobotExpressive.gltf';
+
+            loader.load(modelURL, (gltf) => {
+                const model = gltf.scene;
+                model.scale.set(0.5, 0.5, 0.5);
+                scene.add(model);
+
+                // Make all meshes in the model cast and receive shadows
+                model.traverse(function (object) {
+                    if (object.isMesh) {
+                        object.castShadow = true;
+                        object.receiveShadow = true;
+                    }
+                });
+
+                // Set up the animation mixer
+                mixer = new THREE.AnimationMixer(model);
+                const animations = gltf.animations;
+                const controlsContainer = document.getElementById('controls-container');
+
+                // Create buttons for each animation clip
+                for (const clip of animations) {
+                    const action = mixer.clipAction(clip);
+                    actions[clip.name] = action;
+
+                    // Exclude animations that are not meant to be standalone actions
+                    if (['TPose', 'ThumbUp', 'Yes', 'No'].includes(clip.name)) continue;
+
+                    const button = document.createElement('button');
+                    button.innerText = clip.name;
+                    button.classList.add('anim-button');
+                    button.onclick = () => {
+                        fadeToAction(clip.name, 0.5);
+                        updateActiveButton(button);
+                    };
+                    controlsContainer.appendChild(button);
+                }
+                
+                // Set the default action
+                activeAction = actions['Idle'];
+                activeAction.play();
+                const idleButton = Array.from(controlsContainer.children).find(btn => btn.innerText === 'Idle');
+                if(idleButton) idleButton.classList.add('active');
+
+
+            }, undefined, (error) => {
+                console.error('An error happened while loading the model:', error);
+            });
+        }
+        
+        // --- HANDLE ANIMATION BLENDING ---
+        function fadeToAction(name, duration) {
+            const previousAction = activeAction;
+            activeAction = actions[name];
+
+            if (previousAction !== activeAction) {
+                previousAction.fadeOut(duration);
+            }
+
+            activeAction
+                .reset()
+                .setEffectiveTimeScale(1)
+                .setEffectiveWeight(1)
+                .fadeIn(duration)
+                .play();
+        }
+        
+        // --- UPDATE UI FOR ACTIVE BUTTON ---
+        function updateActiveButton(activeButton) {
+            document.querySelectorAll('.anim-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            activeButton.classList.add('active');
+        }
+
+        // --- HANDLE WINDOW RESIZING ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- THE ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            // Update the animation mixer on each frame
+            if (mixer) {
+                mixer.update(delta);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // --- START THE EXPERIENCE ---
+        init();
+        animate();
+
+    </script>
+</body>
+</html>

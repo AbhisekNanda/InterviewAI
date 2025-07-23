@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  # The Backend Service (FastAPI)
+  backend:
+    build: ./Backend
+    container_name: interviewai_backend
+    # Use an .env file in the Backend directory for API keys
+    env_file:
+      - ./Backend/.env
+    ports:
+      # Expose the backend's port 8000 to the host machine's port 8000
+      - "8000:8000"
+    volumes:
+      # Mount the database file to persist data
+      - ./Backend/interview_ai.db:/app/interview_ai.db
+
+  # The Frontend Service (React + Nginx)
+  frontend:
+    build: ./Frontend
+    container_name: interviewai_frontend
+    ports:
+      # Expose the frontend's port 80 to the host machine's port 5173
+      - "5173:80"
+    # This ensures the frontend starts after the backend is ready
+    depends_on:
+      - backend
+
